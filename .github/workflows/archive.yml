@@ -27,7 +27,9 @@ jobs:
           day=$(TZ=Australia/Brisbane date +%F)
           month=${day:0:7}
           tag="data-$month"
-          asset="snapshot-$day.tar.gz"
+          # Written outside the checkout: tarring "." into a file inside "." makes tar fail with
+          # "file changed as we read it".
+          asset="$RUNNER_TEMP/snapshot-$day.tar.gz"
           tar --exclude=.git -czf "$asset" .
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --target data --title "Data archive $month" \
