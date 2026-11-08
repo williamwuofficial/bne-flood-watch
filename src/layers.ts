@@ -156,7 +156,13 @@ function addRadarSource(map: Map, visibility: 'visible' | 'none') {
     attribution: '<a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a>',
   });
   map.addLayer(
-    { id: 'radar', type: 'raster', source: 'radar', layout: { visibility }, paint: { 'raster-opacity': 0.7, 'raster-fade-duration': 0 } },
+    { id: 'radar', type: 'raster', source: 'radar', layout: { visibility }, paint: {
+        'raster-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.75, 12, 0.55],
+        'raster-fade-duration': 0,
+        // RainViewer's free tier stops at zoom 7 (~1.2 km pixels). Show those pixels as crisp cells
+        // rather than smearing them into blobs, so they read as low-resolution data, not a glitch.
+        'raster-resampling': 'nearest',
+      } },
     beforeLabels(map),
   );
 }

@@ -55,11 +55,17 @@ Run `npm run build:static-floods` to regenerate the simplified Feb 2022 overlay.
 
 ## Roadmap
 
-- [ ] BoM warnings (severe thunderstorm, flood) from the anonymous FTP CAP/XML feeds
-- [ ] BoM river heights for the Brisbane (IDQ60286) and Logan/Albert (IDQ60285) tables, joined to gauge locations. This covers Springwood/Slacks Creek, which BCC gauges don't.
-- [ ] BCC rainfall gauges (last 1 h / 24 h totals)
+- [ ] BCC rainfall gauges (last 1 h and 24 h totals)
 - [ ] Offline-capable PWA showing the last snapshot
 - [ ] Daily archive (Release assets) and an "event replay" view
+
+### Blocked on licensing: Bureau of Meteorology data
+
+BoM's [copyright notice](https://www.bom.gov.au/copyright) lists radar images as restricted content: publishing them online requires a data licence agreement. Content without stated terms (which includes the anonymous-FTP warnings and river-height tables) is for personal or in-house use only and "must not" be supplied to anyone else. So this project links to BoM rather than mirroring:
+
+- BoM radar (sharper than RainViewer). Needs a BoM data licence (webreg@bom.gov.au).
+- BoM warnings (CAP/XML) and river-height tables (IDQ60286 Brisbane, IDQ60285 Logan/Albert). Same licence needed.
+- Logan creek gauges (Slacks Creek etc.) are Logan City Council's. They are published through BoM and Logan's disaster dashboard, not as open data.
 
 ## Licence
 

@@ -125,6 +125,17 @@ if (window.matchMedia('(max-width: 640px)').matches) {
   toggle.setAttribute('aria-expanded', 'false');
 }
 
+// ─── Header dialogs (official warnings, about & sources) ─────────────────────────────────────
+document.querySelectorAll<HTMLButtonElement>('[data-dialog]').forEach((btn) => {
+  const dlg = $<HTMLDialogElement>(btn.dataset.dialog!);
+  btn.addEventListener('click', () => dlg.showModal());
+});
+document.querySelectorAll<HTMLDialogElement>('dialog.dlg').forEach((dlg) => {
+  dlg.querySelector('.dlg-close')?.addEventListener('click', () => dlg.close());
+  // Click on the backdrop closes it.
+  dlg.addEventListener('click', (e) => e.target === dlg && dlg.close());
+});
+
 // ─── Radar animation ─────────────────────────────────────────────────────────────────────────
 let radarTimer: number | undefined;
 const slider = $<HTMLInputElement>('radar-slider');
@@ -174,6 +185,7 @@ async function refreshFreshness() {
     const stale = Date.now() - generated.getTime() > 45 * 60_000;
     el.className = `freshness ${stale || failing.length ? 'warn' : ''}`;
     el.textContent = `Data updated ${ago(generated)}${failing.length ? ` · ${failing.join(', ')} unavailable` : ''}`;
+    $('about-status').textContent = el.textContent;
     el.title = Object.entries(s.sources)
       .map(([k, v]) => `${k}: ${v.ok ? 'ok' : `error: ${v.error}`}${v.lastSuccess ? `, last success ${new Date(v.lastSuccess).toLocaleString('en-AU')}` : ''}`)
       .join('\n');

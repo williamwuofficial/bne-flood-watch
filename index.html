@@ -14,8 +14,49 @@
         <h1>BNE Flood Watch</h1>
         <span class="tag">Unofficial</span>
       </div>
-      <div id="freshness" class="freshness" aria-live="polite"></div>
+      <div class="topbar-right">
+        <div id="freshness" class="freshness" aria-live="polite"></div>
+        <button type="button" class="hbtn warn" data-dialog="dlg-warnings" aria-haspopup="dialog">
+          <span aria-hidden="true">⚠</span><span class="hbtn-label">Warnings</span>
+        </button>
+        <button type="button" class="hbtn" data-dialog="dlg-about" aria-haspopup="dialog" aria-label="About and data sources">
+          <span aria-hidden="true">ⓘ</span><span class="hbtn-label">About</span>
+        </button>
+      </div>
     </header>
+
+    <dialog id="dlg-warnings" class="dlg" aria-labelledby="dlg-warnings-title">
+      <header><h2 id="dlg-warnings-title">Official warnings</h2><button type="button" class="dlg-close" aria-label="Close">✕</button></header>
+      <p class="disclaimer">
+        This site is <strong>not</strong> an official warning service. Data can be delayed or wrong.
+        In an emergency call <strong>000</strong>. For flood or storm help call the SES on <strong>132 500</strong>.
+        Never drive through flood water.
+      </p>
+      <ul class="links">
+        <li><a href="https://www.bom.gov.au/weather-and-climate/warnings-and-alerts" target="_blank" rel="noopener">Bureau of Meteorology warnings</a><span>Severe thunderstorm, flood and cyclone warnings</span></li>
+        <li><a href="https://www.bom.gov.au/location/australia/queensland/south-east/bqld_pt045-brisbane" target="_blank" rel="noopener">BoM Brisbane radar &amp; forecast</a><span>Official radar loop</span></li>
+        <li><a href="https://www.brisbane.qld.gov.au/community-support-and-safety/natural-disasters-and-emergencies/emergency-dashboard" target="_blank" rel="noopener">Brisbane Emergency Dashboard</a><span>Road closures, outages, evacuation centres</span></li>
+        <li><a href="https://disaster.logan.qld.gov.au/" target="_blank" rel="noopener">Logan Disaster Dashboard</a><span>Logan alerts and flood gauges</span></li>
+        <li><a href="https://qldtraffic.qld.gov.au/" target="_blank" rel="noopener">QLDTraffic</a><span>Statewide road conditions</span></li>
+        <li><a href="https://www.getready.qld.gov.au/" target="_blank" rel="noopener">Get Ready Queensland</a><span>Preparing for storms and floods</span></li>
+      </ul>
+    </dialog>
+
+    <dialog id="dlg-about" class="dlg" aria-labelledby="dlg-about-title">
+      <header><h2 id="dlg-about-title">About BNE Flood Watch</h2><button type="button" class="dlg-close" aria-label="Close">✕</button></header>
+      <p>An unofficial, open-source map of storm and flood information for Greater Brisbane, from Chermside to Springwood, built only from freely available data.</p>
+      <p id="about-status" class="muted"></p>
+      <h3>Data sources &amp; licences</h3>
+      <ul class="sources">
+        <li>Rain radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> (low resolution, so cells look blocky when zoomed in)</li>
+        <li>Forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)</li>
+        <li>Creek gauges and Feb 2022 flood extent: <a href="https://data.brisbane.qld.gov.au/" target="_blank" rel="noopener">Brisbane City Council open data</a> (CC BY 4.0)</li>
+        <li>1893, 1974 and 2011 flood extents: © State of Queensland, Queensland Spatial (FloodCheck)</li>
+        <li>Road events: State of Queensland (Department of Transport and Main Roads), <a href="https://qldtraffic.qld.gov.au/more/Developers-and-Data" target="_blank" rel="noopener">QLDTraffic API</a> (CC BY 4.0 AU)</li>
+        <li>Base map: <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>, © OpenStreetMap contributors</li>
+      </ul>
+      <p><a href="https://github.com/williamwuofficial/bne-flood-watch" target="_blank" rel="noopener">Source code on GitHub</a> · MIT licence</p>
+    </dialog>
 
     <div id="map" role="region" aria-label="Map"></div>
 
@@ -41,34 +82,6 @@
           <h2>Forecast <span id="forecast-where" class="muted"></span></h2>
           <div id="forecast" class="forecast">Loading…</div>
           <p class="hint">Long-press or right-click the map to get the forecast for that spot.</p>
-        </section>
-        <section class="official">
-          <h2>Official warnings</h2>
-          <ul>
-            <li><a href="https://www.bom.gov.au/weather-and-climate/warnings-and-alerts" target="_blank" rel="noopener">BoM warnings</a></li>
-            <li><a href="https://www.brisbane.qld.gov.au/community-support-and-safety/natural-disasters-and-emergencies/emergency-dashboard" target="_blank" rel="noopener">Brisbane Emergency Dashboard</a></li>
-            <li><a href="https://disaster.logan.qld.gov.au/" target="_blank" rel="noopener">Logan Disaster Dashboard</a></li>
-            <li><a href="https://qldtraffic.qld.gov.au/" target="_blank" rel="noopener">QLDTraffic</a></li>
-          </ul>
-          <p class="disclaimer">
-            This site is <strong>not</strong> an official warning service. Data can be delayed or wrong.
-            In an emergency call <strong>000</strong>; for flood or storm help call the SES on <strong>132 500</strong>.
-            Never drive through flood water.
-          </p>
-        </section>
-        <section>
-          <details>
-            <summary>Data sources &amp; licences</summary>
-            <ul class="sources">
-              <li>Rain radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a></li>
-              <li>Forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)</li>
-              <li>Creek gauges and Feb 2022 flood extent: Brisbane City Council open data (CC BY 4.0)</li>
-              <li>1893, 1974 and 2011 flood extents: © State of Queensland, Queensland Spatial (FloodCheck)</li>
-              <li>Road events: State of Queensland (Department of Transport and Main Roads) QLDTraffic API (CC BY 4.0 AU)</li>
-              <li>Base map: <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>, © OpenStreetMap contributors</li>
-            </ul>
-            <p><a href="https://github.com/williamwuofficial/bne-flood-watch" target="_blank" rel="noopener">Source code on GitHub</a></p>
-          </details>
         </section>
       </div>
     </aside>
