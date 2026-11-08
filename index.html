@@ -47,7 +47,7 @@
 
     <dialog id="dlg-about" class="dlg" aria-labelledby="dlg-about-title">
       <header><h2 id="dlg-about-title">About BNE Flood Watch</h2><button type="button" class="dlg-close" aria-label="Close">✕</button></header>
-      <p>An unofficial, open-source map of storm and flood information for Greater Brisbane, from Chermside to Springwood, built only from freely available data.</p>
+      <p>An unofficial, open-source map of storm and flood information for the Greater Brisbane area, built only from freely available data.</p>
       <p id="about-status" class="muted"></p>
       <h3>Data sources &amp; licences</h3>
       <ul class="sources">
@@ -63,30 +63,29 @@
 
     <div id="map" role="region" aria-label="Map"></div>
 
-    <aside id="panel" class="panel" aria-label="Layers and forecast">
-      <button id="panel-toggle" class="panel-toggle" aria-expanded="true" aria-controls="panel-body">
-        Layers &amp; forecast
-      </button>
-      <div id="panel-body" class="panel-body">
-        <section>
-          <h2>Live</h2>
+    <aside id="panel" class="panel" aria-label="Map layers and forecast">
+      <details class="psec" data-section="live" open>
+        <summary>Live data</summary>
+        <div class="psec-body">
           <div id="live-layers"></div>
-          <div id="radar-controls" class="radar-controls" hidden>
+          <div id="radar-controls" class="radar-controls">
             <button id="radar-play" type="button" aria-label="Play radar loop">▶</button>
             <input id="radar-slider" type="range" min="0" max="0" value="0" aria-label="Radar frame" />
             <span id="radar-time" class="mono"></span>
           </div>
-        </section>
-        <section>
-          <h2>Historic floods</h2>
-          <div id="history-layers"></div>
-        </section>
-        <section>
-          <h2>Forecast <span id="forecast-where" class="muted"></span></h2>
+        </div>
+      </details>
+      <details class="psec" data-section="history" open>
+        <summary>Historic flood maps</summary>
+        <div class="psec-body"><div id="history-layers"></div></div>
+      </details>
+      <details class="psec" data-section="forecast" open>
+        <summary>Forecast <span id="forecast-where" class="muted"></span></summary>
+        <div class="psec-body">
           <div id="forecast" class="forecast">Loading…</div>
           <p class="hint">Long-press or right-click the map to get the forecast for that spot.</p>
-        </section>
-      </div>
+        </div>
+      </details>
     </aside>
 
     <script type="module" src="/src/main.ts"></script>

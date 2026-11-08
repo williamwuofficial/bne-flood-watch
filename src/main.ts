@@ -3,6 +3,7 @@ import './style.css';
 import { GeolocateControl, Map, NavigationControl, ScaleControl } from 'maplibre-gl';
 import { BASEMAP, BOUNDS, DATA_URL, HOME } from './config';
 import { renderForecast } from './forecast';
+import { iconImg, loadIcons } from './icons';
 import {
   LAYERS,
   invalidatePipelineData,
@@ -60,7 +61,8 @@ map.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
 // tiles are still loading, so it can't be used to gate layer toggles.)
 let layersReady = false;
 
-function installLayers() {
+async function installLayers() {
+  await loadIcons(map);
   layersReady = true;
   for (const layer of LAYERS) {
     layer.add(map);
@@ -71,8 +73,8 @@ function installLayers() {
 
 async function setVisible(layer: Layer, on: boolean) {
   for (const id of layer.layerIds) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
-  if (layer.id === 'radar') $('radar-controls').hidden = !on;
-  if (layer.id === 'rainfall') $('rain-controls').hidden = !on;
+  const extra = document.querySelector<HTMLElement>(`[data-extra-for="${layer.id}"]`);
+  if (extra) extra.hidden = !on;
   if (!on && layer.id === 'radar') stopRadar();
   if (on && layer.show) {
     try {
@@ -104,9 +106,10 @@ function buildPanel() {
     const row = document.createElement('label');
     row.className = 'layer-row';
     row.dataset.layer = layer.id;
+    const marker = layer.icon ? iconImg(layer.icon, 18) : `<span class="swatch" style="--c:${layer.swatch}"></span>`;
     row.innerHTML = `
       <input type="checkbox" ${isOn(layer) ? 'checked' : ''} />
-      <span class="swatch" style="--c:${layer.swatch}"></span>
+      ${marker}
       <span class="name">${layer.label}</span>
       <span class="err" hidden>!</span>`;
     const box = row.querySelector('input')!;
@@ -115,10 +118,19 @@ function buildPanel() {
       savePrefs();
       if (layersReady) setVisible(layer, box.checked);
     });
-    $(layer.group === 'live' ? 'live-layers' : 'history-layers').append(row);
-    // Each layer's extra controls sit directly under its own row.
-    if (layer.id === 'radar') row.after($('radar-controls'));
-    if (layer.id === 'rainfall') row.after(buildRainControls());
+
+    // Controls and legend for this layer sit directly under its row and show only while it's on.
+    const extra = document.createElement('div');
+    extra.className = 'layer-extra';
+    extra.dataset.extraFor = layer.id;
+    extra.hidden = !isOn(layer);
+    if (layer.id === 'radar') extra.append($('radar-controls'));
+    if (layer.id === 'rainfall') extra.append(buildRainControls());
+    if (layer.legend) extra.insertAdjacentHTML('beforeend', layer.legend);
+
+    const list = $(layer.group === 'live' ? 'live-layers' : 'history-layers');
+    list.append(row);
+    if (extra.childElementCount) list.append(extra);
   }
 }
 
@@ -128,7 +140,6 @@ function buildRainControls() {
   wrap.className = 'segmented';
   wrap.setAttribute('role', 'radiogroup');
   wrap.setAttribute('aria-label', 'Rainfall period');
-  wrap.hidden = true;
   const options: [RainWindow, string][] = [
     ['rain1h', '1 h'],
     ['rain3h', '3 h'],
@@ -160,16 +171,28 @@ function markLayerError(layer: Layer, message: string | null) {
   badge.title = message ? `Couldn't load: ${message}` : '';
 }
 
-const panel = $('panel');
-const toggle = $('panel-toggle');
-toggle.addEventListener('click', () => {
-  const open = panel.classList.toggle('collapsed') === false;
-  toggle.setAttribute('aria-expanded', String(open));
-});
-if (window.matchMedia('(max-width: 640px)').matches) {
-  panel.classList.add('collapsed');
-  toggle.setAttribute('aria-expanded', 'false');
+// Panel sections remember whether they're open; on phones they all start closed to keep the map clear.
+const SECTIONS_KEY = 'bne-flood-watch:sections';
+const phone = window.matchMedia('(max-width: 640px)').matches;
+let sectionState: Record<string, boolean> = {};
+try {
+  sectionState = JSON.parse(localStorage.getItem(SECTIONS_KEY) ?? '{}');
+} catch {
+  /* ignore */
 }
+document.querySelectorAll<HTMLDetailsElement>('details.psec').forEach((d) => {
+  const key = d.dataset.section!;
+  d.open = phone ? false : (sectionState[key] ?? d.open);
+  d.addEventListener('toggle', () => {
+    if (phone) return;
+    sectionState[key] = d.open;
+    try {
+      localStorage.setItem(SECTIONS_KEY, JSON.stringify(sectionState));
+    } catch {
+      /* ignore */
+    }
+  });
+});
 
 // ─── Header dialogs (official warnings, about & sources) ─────────────────────────────────────
 document.querySelectorAll<HTMLButtonElement>('[data-dialog]').forEach((btn) => {

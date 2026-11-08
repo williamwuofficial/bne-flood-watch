@@ -1,11 +1,23 @@
 import type { FeatureCollection } from 'geojson';
 import { Popup, type ExpressionSpecification, type GeoJSONSource, type Map, type MapGeoJSONFeature, type RasterTileSource } from 'maplibre-gl';
 import { DATA_URL, STATIC_URL, arcgisTiles } from './config';
+import { GAUGE_STATUS, RAIN_RAMP, iconImg } from './icons';
+import { ago, esc, fetchJson, fmtDateTime, sparkline } from './util';
 
 /** ['match', ['get', prop], k1, v1, …, fallback] built from a lookup table. */
 const matchColour = (prop: string, table: Record<string, string>, fallback: string) =>
   ['match', ['get', prop], ...Object.entries(table).flat(), fallback] as unknown as ExpressionSpecification;
-import { ago, esc, fetchJson, fmtDateTime, sparkline } from './util';
+
+/**
+ * Icons scale gently with zoom so dense areas stay legible when zoomed out. `scale` lets a layer
+ * shrink less important features. (MapLibre only allows ['zoom'] at the top level of an
+ * interpolate, so the per-feature scale goes inside each stop.)
+ */
+function iconSize(scale?: ExpressionSpecification): ExpressionSpecification {
+  const stop = (base: number) => (scale ? ['*', base, scale] : base);
+  return ['interpolate', ['linear'], ['zoom'], 9, stop(0.62), 12, stop(0.8), 15, stop(1)] as unknown as ExpressionSpecification;
+}
+const ICON_SIZE = iconSize();
 
 // ─── Data produced by the Actions pipeline (data/latest/*.json) ───────────────────────────────
 // globalThis.Map: the MapLibre `Map` import shadows the built-in one in this module.
@@ -32,6 +44,10 @@ export interface Layer {
   label: string;
   group: 'live' | 'history';
   swatch: string;
+  /** Icon shown in the panel row instead of the colour swatch. */
+  icon?: string;
+  /** Legend HTML shown under the row while the layer is on. */
+  legend?: string;
   defaultOn: boolean;
   /** Adds sources/layers (hidden). Called once after each style load. */
   add(map: Map): void;
@@ -202,13 +218,7 @@ interface GaugeProps {
   series: [number, number][];
 }
 
-export const STATUS_COLOURS = {
-  below: '#16a34a',
-  minor: '#eab308',
-  moderate: '#f97316',
-  major: '#dc2626',
-  unknown: '#94a3b8',
-};
+export const STATUS_COLOURS = GAUGE_STATUS;
 
 const STATUS_LABEL = {
   below: 'Below flood level',
@@ -220,9 +230,17 @@ const STATUS_LABEL = {
 
 const gauges: Layer = {
   id: 'gauges',
-  label: 'Creek & river gauges (BCC)',
+  label: 'Creek & river levels (BCC)',
   group: 'live',
   swatch: STATUS_COLOURS.below,
+  icon: 'gauge-below',
+  legend: legendList([
+    ['gauge-below', 'Below flood level'],
+    ['gauge-minor', 'Minor'],
+    ['gauge-moderate', 'Moderate'],
+    ['gauge-major', 'Major'],
+    ['gauge-unknown', 'No reading'],
+  ]),
   defaultOn: true,
   layerIds: ['gauges'],
   add(map) {
@@ -233,17 +251,15 @@ const gauges: Layer = {
     });
     map.addLayer({
       id: 'gauges',
-      type: 'circle',
+      type: 'symbol',
       source: 'gauges',
       layout: {
         visibility: 'none',
-        'circle-sort-key': ['match', ['get', 'status'], 'major', 4, 'moderate', 3, 'minor', 2, 'below', 1, 0],
-      },
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 4, 14, 9],
-        'circle-color': matchColour('status', STATUS_COLOURS, STATUS_COLOURS.unknown),
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 1.5,
+        'icon-image': ['concat', 'gauge-', ['get', 'status']],
+        'icon-size': ICON_SIZE,
+        'icon-allow-overlap': true,
+        // Flooding gauges draw on top.
+        'symbol-sort-key': ['match', ['get', 'status'], 'major', 4, 'moderate', 3, 'minor', 2, 'below', 1, 0],
       },
     });
     bindPopup(map, 'gauges', (f) => gaugePopup(f.properties as unknown as GaugeProps, f));
@@ -252,6 +268,11 @@ const gauges: Layer = {
     map.getSource<GeoJSONSource>('gauges')?.setData(await pipelineData('latest/bcc-gauges.json'));
   },
 };
+
+/** Legend: rows of [icon name, label]. */
+function legendList(items: [string, string][]) {
+  return `<ul class="legend">${items.map(([icon, label]) => `<li>${iconImg(icon, 16)}<span>${esc(label)}</span></li>`).join('')}</ul>`;
+}
 
 function gaugePopup(p: GaugeProps, f: MapGeoJSONFeature) {
   // MapLibre stringifies nested arrays in feature properties.
@@ -278,39 +299,46 @@ function gaugePopup(p: GaugeProps, f: MapGeoJSONFeature) {
 export type RainWindow = 'rain1h' | 'rain3h' | 'rain24h';
 export const rainState = { window: 'rain24h' as RainWindow };
 
-/** mm thresholds → colour, loosely following common rainfall map ramps. */
-const RAIN_RAMP: [number, string][] = [
-  [0.2, '#bae6fd'],
-  [5, '#38bdf8'],
-  [15, '#2563eb'],
-  [30, '#7c3aed'],
-  [60, '#c026d3'],
-  [100, '#e11d48'],
-];
+function rainIcon(win: RainWindow): ExpressionSpecification {
+  const steps = RAIN_RAMP.flatMap(([mm], i) => [mm, `rain-${i + 1}`]);
+  return ['case', ['!', ['get', 'reporting']], 'rain-off', ['step', ['get', win], 'rain-dry', ...steps]] as unknown as ExpressionSpecification;
+}
 
-function rainColour(win: RainWindow): ExpressionSpecification {
-  return ['step', ['get', win], 'rgba(0,0,0,0)', ...RAIN_RAMP.flat()] as unknown as ExpressionSpecification;
+function rainLabel(win: RainWindow): ExpressionSpecification {
+  return ['case', ['>=', ['get', win], 0.2], ['number-format', ['get', win], { 'max-fraction-digits': 1 }], ''] as unknown as ExpressionSpecification;
+}
+
+/** Dry or silent gauges are drawn small so a dry day doesn't bury the map in droplets. */
+function rainSize(win: RainWindow): ExpressionSpecification {
+  return iconSize(['case', ['all', ['get', 'reporting'], ['>=', ['get', win], 0.2]], 1, 0.6] as unknown as ExpressionSpecification);
 }
 
 export function setRainWindow(map: Map, win: RainWindow) {
   rainState.window = win;
-  if (!map.getLayer('rain-dot')) return;
-  map.setPaintProperty('rain-dot', 'circle-color', rainColour(win));
-  map.setLayoutProperty('rain-label', 'text-field', rainLabel(win));
-  map.setFilter('rain-label', ['>=', ['get', win], 0.2]);
+  if (!map.getLayer('rain')) return;
+  map.setLayoutProperty('rain', 'icon-image', rainIcon(win));
+  map.setLayoutProperty('rain', 'icon-size', rainSize(win));
+  map.setLayoutProperty('rain', 'text-field', rainLabel(win));
+  map.setLayoutProperty('rain', 'symbol-sort-key', ['get', win]);
 }
 
-function rainLabel(win: RainWindow): ExpressionSpecification {
-  return ['number-format', ['get', win], { 'max-fraction-digits': 1 }] as unknown as ExpressionSpecification;
-}
+const RAIN_LEGEND = (() => {
+  const bands = RAIN_RAMP.map(([mm], i) => {
+    const next = RAIN_RAMP[i + 1]?.[0];
+    return [`rain-${i + 1}`, next ? `${mm}–${next} mm` : `${mm}+ mm`] as [string, string];
+  });
+  return legendList([['rain-dry', 'Dry'], ...bands, ['rain-off', 'No reading']]);
+})();
 
 const rainfall: Layer = {
   id: 'rainfall',
   label: 'Rainfall totals (BCC)',
   group: 'live',
   swatch: '#38bdf8',
+  icon: 'rain-2',
+  legend: RAIN_LEGEND,
   defaultOn: false,
-  layerIds: ['rain-dot', 'rain-label'],
+  layerIds: ['rain'],
   add(map) {
     map.addSource('rainfall', {
       type: 'geojson',
@@ -319,34 +347,26 @@ const rainfall: Layer = {
     });
     const win = rainState.window;
     map.addLayer({
-      id: 'rain-dot',
-      type: 'circle',
-      source: 'rainfall',
-      layout: { visibility: 'none' },
-      paint: {
-        // Hollow ring when dry, filled by intensity when wet, grey dashed-look when not reporting.
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 5, 14, 10],
-        'circle-color': rainColour(win),
-        'circle-stroke-color': ['case', ['get', 'reporting'], '#38bdf8', '#94a3b8'],
-        'circle-stroke-width': 2,
-      },
-    });
-    map.addLayer({
-      id: 'rain-label',
+      id: 'rain',
       type: 'symbol',
       source: 'rainfall',
-      filter: ['>=', ['get', win], 0.2],
       layout: {
         visibility: 'none',
+        'icon-image': rainIcon(win),
+        'icon-size': rainSize(win),
+        'icon-allow-overlap': true,
+        'symbol-sort-key': ['get', win],
         'text-field': rainLabel(win),
         'text-font': ['Noto Sans Regular'],
         'text-size': 12,
-        'text-offset': [0, -1.4],
+        'text-anchor': 'left',
+        'text-offset': [0.9, 0],
         'text-allow-overlap': true,
+        'text-optional': true,
       },
       paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
     });
-    bindPopup(map, 'rain-dot', (f) => {
+    bindPopup(map, 'rain', (f) => {
       const p = f.properties as Record<string, number | string | boolean | null>;
       const asOf = p.lastReport ? new Date(Number(p.lastReport) * 1000) : null;
       return `
@@ -371,67 +391,129 @@ const TRAFFIC_COLOURS = {
   Flooding: '#0284c7',
   Hazard: '#f59e0b',
   Crash: '#dc2626',
-  Roadworks: '#78716c',
+  Roadworks: '#ea580c',
   'Special event': '#7c3aed',
 };
+const TRAFFIC_ICON_KEY: Record<string, string> = {
+  Flooding: 'flooding',
+  Hazard: 'hazard',
+  Crash: 'crash',
+  Roadworks: 'roadworks',
+  'Special event': 'event',
+};
+/** Higher draws on top: storm-relevant events above roadworks. */
+const TRAFFIC_PRIORITY: Record<string, number> = { Flooding: 5, Crash: 4, Hazard: 3, 'Special event': 2, Roadworks: 1 };
+
+type Position = number[];
+
+/** One icon per event: each point of a (multi)point, or the middle of the longest line. */
+function iconAnchors(geom: GeoJSON.Geometry | null): Position[] {
+  if (!geom) return [];
+  switch (geom.type) {
+    case 'Point':
+      return [geom.coordinates];
+    case 'MultiPoint':
+      return geom.coordinates;
+    case 'LineString':
+      return [geom.coordinates[Math.floor(geom.coordinates.length / 2)]];
+    case 'MultiLineString': {
+      const longest = geom.coordinates.reduce((a, b) => (b.length > a.length ? b : a), []);
+      return longest.length ? [longest[Math.floor(longest.length / 2)]] : [];
+    }
+    case 'GeometryCollection':
+      return iconAnchors(geom.geometries.find((g) => iconAnchors(g).length) ?? null);
+    default:
+      return [];
+  }
+}
+
+function trafficIcons(fc: FeatureCollection): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: fc.features.flatMap((f) => {
+      const p = f.properties ?? {};
+      const closed = /closed/i.test(String(p.impact ?? ''));
+      const icon = `traffic-${TRAFFIC_ICON_KEY[p.type] ?? 'hazard'}${closed ? '-closed' : ''}`;
+      return iconAnchors(f.geometry).map((coordinates) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates },
+        properties: { ...p, icon, closed, priority: (TRAFFIC_PRIORITY[p.type] ?? 2) + (closed ? 0.5 : 0) },
+      }));
+    }),
+  };
+}
+
+const LINE_TYPES = ['literal', ['LineString', 'MultiLineString']] as unknown as ExpressionSpecification;
 
 const traffic: Layer = {
   id: 'traffic',
   label: 'Road closures & hazards',
   group: 'live',
   swatch: TRAFFIC_COLOURS.Flooding,
+  icon: 'traffic-flooding',
+  legend: legendList([
+    ['traffic-flooding', 'Flooding'],
+    ['traffic-hazard', 'Hazard'],
+    ['traffic-crash', 'Crash'],
+    ['traffic-roadworks', 'Roadworks'],
+    ['traffic-event', 'Special event'],
+    ['traffic-hazard-closed', 'Road closed'],
+  ]),
   defaultOn: true,
-  layerIds: ['traffic-line', 'traffic-point'],
+  layerIds: ['traffic-line', 'traffic-icons'],
   add(map) {
     map.addSource('traffic', {
       type: 'geojson',
       data: pipelineCache.get('latest/traffic.json') ?? EMPTY,
       attribution: 'State of Queensland (TMR) QLDTraffic (CC BY 4.0 AU)',
     });
-    const colour = matchColour('type', TRAFFIC_COLOURS, '#64748b');
-    // Roadworks are numerous and rarely storm-related, so they're drawn faintly.
+    const cached = pipelineCache.get('latest/traffic.json');
+    map.addSource('traffic-icons', { type: 'geojson', data: cached ? trafficIcons(cached) : EMPTY });
     const isRoadworks: ExpressionSpecification = ['==', ['get', 'type'], 'Roadworks'];
+    // Affected road sections, under the icons. Roadworks are numerous and rarely storm-related,
+    // so they're drawn faintly and dashed.
     map.addLayer({
       id: 'traffic-line',
       type: 'line',
       source: 'traffic',
-      filter: ['==', ['geometry-type'], 'LineString'],
+      filter: ['in', ['geometry-type'], LINE_TYPES],
       layout: { visibility: 'none', 'line-cap': 'round' },
       paint: {
-        'line-color': colour,
+        'line-color': matchColour('type', TRAFFIC_COLOURS, '#64748b'),
         'line-width': ['case', isRoadworks, 2, 4],
-        'line-opacity': ['case', isRoadworks, 0.45, 0.9],
+        'line-opacity': ['case', isRoadworks, 0.45, 0.85],
+        'line-dasharray': ['case', isRoadworks, ['literal', [2, 2]], ['literal', [1, 0]]],
       },
     });
     map.addLayer({
-      id: 'traffic-point',
-      type: 'circle',
-      source: 'traffic',
-      filter: ['==', ['geometry-type'], 'Point'],
-      layout: { visibility: 'none' },
-      paint: {
-        'circle-radius': ['case', isRoadworks, 4, 6],
-        'circle-color': colour,
-        'circle-opacity': ['case', isRoadworks, 0.5, 1],
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 1.5,
+      id: 'traffic-icons',
+      type: 'symbol',
+      source: 'traffic-icons',
+      layout: {
+        visibility: 'none',
+        'icon-image': ['get', 'icon'],
+        'icon-size': iconSize(['case', isRoadworks, 0.8, 1]),
+        'icon-allow-overlap': true,
+        'symbol-sort-key': ['get', 'priority'],
       },
+      paint: { 'icon-opacity': ['case', isRoadworks, 0.75, 1] },
     });
     const popup = (f: MapGeoJSONFeature) => {
       const p = f.properties as Record<string, string | null>;
       return `
-        <h3>${esc(p.subtype || p.type)}</h3>
+        <h3>${iconImg(String(p.icon ?? 'traffic-hazard'), 20)} ${esc(p.subtype || p.type)}</h3>
         <p class="status" style="--c:${TRAFFIC_COLOURS[p.type as keyof typeof TRAFFIC_COLOURS] ?? '#64748b'}">${esc(p.impact ?? p.type)}</p>
         <p><strong>${esc(p.road)}</strong>${p.locality ? `, ${esc(p.locality)}` : ''}</p>
         ${p.description ? `<p>${esc(p.description)}</p>` : ''}
         ${p.advice ? `<p class="muted">${esc(p.advice)}</p>` : ''}
         ${p.updated ? `<p class="muted">Updated ${fmtDateTime(new Date(p.updated))}</p>` : ''}`;
     };
-    bindPopup(map, 'traffic-line', popup);
-    bindPopup(map, 'traffic-point', popup);
+    bindPopup(map, 'traffic-icons', popup);
   },
   async show(map) {
-    map.getSource<GeoJSONSource>('traffic')?.setData(await pipelineData('latest/traffic.json'));
+    const data = await pipelineData('latest/traffic.json');
+    map.getSource<GeoJSONSource>('traffic')?.setData(data);
+    map.getSource<GeoJSONSource>('traffic-icons')?.setData(trafficIcons(data));
   },
 };
 
