@@ -9,6 +9,13 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      // Apply a saved light/dark choice before first paint (no flash). Without one, CSS follows the OS.
+      try {
+        const t = localStorage.getItem('bne-flood-watch:theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
   </head>
   <body>
     <header class="topbar">
@@ -19,6 +26,7 @@
       <div class="topbar-right">
         <span id="offline" class="offline-chip" hidden>Offline · saved data</span>
         <div id="freshness" class="freshness" aria-live="polite"></div>
+        <button type="button" id="theme-toggle" class="hbtn icon-only"></button>
         <button type="button" class="hbtn warn" data-dialog="dlg-warnings" aria-haspopup="dialog">
           <span aria-hidden="true">⚠</span><span class="hbtn-label">Warnings</span>
         </button>

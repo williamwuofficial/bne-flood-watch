@@ -40,10 +40,25 @@ const isOn = (l: Layer) => prefs[l.id] ?? l.defaultOn;
 
 
 // ─── Map ─────────────────────────────────────────────────────────────────────────────────────
-const dark = window.matchMedia('(prefers-color-scheme: dark)');
+// ─── Theme: saved light/dark choice, else follow the OS ───────────────────────────────────────
+type Theme = 'light' | 'dark';
+const THEME_KEY = 'bne-flood-watch:theme';
+const osDark = window.matchMedia('(prefers-color-scheme: dark)');
+/** The viewer's explicit choice, or null to follow the OS. Kept in memory too, for private mode. */
+let chosenTheme: Theme | null = (() => {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return t === 'light' || t === 'dark' ? t : null;
+  } catch {
+    return null;
+  }
+})();
+const osTheme = (): Theme => (osDark.matches ? 'dark' : 'light');
+const effectiveTheme = (): Theme => chosenTheme ?? osTheme();
+let mapTheme = effectiveTheme();
 const map = new Map({
   container: 'map',
-  style: dark.matches ? BASEMAP.dark : BASEMAP.light,
+  style: BASEMAP[mapTheme],
   center: HOME.center,
   zoom: HOME.zoom,
   maxBounds: [
@@ -93,12 +108,45 @@ map.on('load', () => {
   const panelWidth = window.matchMedia('(max-width: 640px)').matches ? 0 : 340;
   map.fitBounds(BOUNDS, { padding: { top: 20, bottom: 20, right: 20, left: 20 + panelWidth }, duration: 0, maxZoom: HOME.zoom });
 });
-// Follow the OS light/dark setting; layers must be re-added after a style swap.
-dark.addEventListener('change', (e) => {
-  layersReady = false;
-  map.setStyle(e.matches ? BASEMAP.dark : BASEMAP.light);
-  map.once('style.load', installLayers);
+const SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>';
+
+/** Sync page colours, the toggle button and the base map with the current theme. */
+function applyTheme() {
+  const theme = effectiveTheme();
+  if (chosenTheme) document.documentElement.dataset.theme = chosenTheme;
+  else delete document.documentElement.dataset.theme;
+
+  const btn = $<HTMLButtonElement>('theme-toggle');
+  const next = theme === 'dark' ? 'light' : 'dark';
+  btn.innerHTML = theme === 'dark' ? SUN : MOON; // show the theme you'd switch to
+  btn.setAttribute('aria-label', `Switch to ${next} theme`);
+  btn.title = `Switch to ${next} theme`;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0f172a' : '#ffffff');
+
+  if (theme !== mapTheme) {
+    mapTheme = theme;
+    // Our sources and layers live on the style, so they're re-added once the new style loads.
+    layersReady = false;
+    map.setStyle(BASEMAP[theme]);
+    map.once('style.load', installLayers);
+  }
+}
+
+$('theme-toggle').addEventListener('click', () => {
+  const next: Theme = effectiveTheme() === 'dark' ? 'light' : 'dark';
+  // Choosing the OS's own theme clears the override, so the site goes back to following the OS.
+  chosenTheme = next === osTheme() ? null : next;
+  try {
+    if (chosenTheme) localStorage.setItem(THEME_KEY, chosenTheme);
+    else localStorage.removeItem(THEME_KEY);
+  } catch {
+    /* private mode: applies for this visit only */
+  }
+  applyTheme();
 });
+osDark.addEventListener('change', applyTheme);
+applyTheme();
 
 // ─── Layer panel ─────────────────────────────────────────────────────────────────────────────
 function buildPanel() {

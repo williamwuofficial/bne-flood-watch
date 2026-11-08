@@ -11,8 +11,21 @@
   --topbar-h: 48px;
   color-scheme: light;
 }
+/* Dark theme: chosen explicitly (data-theme="dark"), or following the OS when no choice is saved. */
+:root[data-theme="dark"] {
+  --bg: #0b1220;
+  --surface: #111827;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --border: #1f2937;
+  --accent: #60a5fa;
+  --warn-bg: #451a03;
+  --warn-text: #fcd34d;
+  --shadow: 0 4px 16px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0b1220;
     --surface: #111827;
     --text: #e5e7eb;
@@ -54,6 +67,8 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: 
   background: var(--bg); color: var(--text); cursor: pointer; white-space: nowrap;
 }
 .hbtn:hover { border-color: var(--accent); }
+.hbtn.icon-only { width: 32px; padding: 0; justify-content: center; }
+.hbtn svg { width: 16px; height: 16px; }
 .hbtn.warn { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
 .offline-chip { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-text); white-space: nowrap; }
 .offline-chip[hidden] { display: none; }
