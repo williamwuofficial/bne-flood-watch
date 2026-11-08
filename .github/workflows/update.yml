@@ -3,8 +3,9 @@
 # Everything runs in one job on `main` because the github-pages environment only accepts deploys
 # from the default branch, and scheduled workflows always run on the default branch anyway.
 #
-# Free on public repos. Cron is best effort: runs are often 5–20 min late at busy times, so the
-# site always shows how old its data is.
+# Free on public repos. Cron is best effort: GitHub throttles frequent schedules on small repos, so
+# runs can be hours apart rather than every 10 minutes. That's accepted here; the site always shows
+# how old its data is.
 name: Update data & deploy
 
 on:

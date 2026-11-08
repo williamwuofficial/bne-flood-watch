@@ -9,7 +9,7 @@ An **unofficial** storm-season dashboard for the Greater Brisbane area. It puts 
 ## How it works
 
 ```
-GitHub Actions (every ~10 min)                        Browser
+GitHub Actions (scheduled, best effort)               Browser
   fetchers/*.mjs ──► public/data/*.json ──┐            ├─ fetches data/*.json from Pages
                      (force-pushed to     │            └─ fetches keyless, CORS-enabled sources directly:
                       the `data` branch)  │               RainViewer radar, Open-Meteo forecast,
@@ -17,11 +17,12 @@ GitHub Actions (every ~10 min)                        Browser
        └──► GitHub Pages
 ```
 
+- **Update schedule (best effort):** the workflow asks GitHub to run every 10 minutes. GitHub treats scheduled runs as low priority and throttles frequent schedules on small repos, so in practice updates can arrive hours apart. Pushes to `main` and manual runs (Actions tab → *Update data & deploy* → *Run workflow*) refresh immediately. That's a deliberate trade-off to keep the project free and simple. The header always shows how old the data is, and turns amber after 45 minutes. For timely refreshes during an event, point an external scheduler (for example a Cloudflare Worker cron) at the workflow's `workflow_dispatch`.
 - **Fetched by Actions:** sources that are heavy, keyed, or need history. The workflow stores a small snapshot, keeps it on the orphan `data` branch (one force-pushed commit, so the repo doesn't grow), and deploys it with the site.
 - **Fetched by the browser:** sources that allow cross-origin requests and are cheap to call per visitor.
 - **Live refresh:** an open page re-checks `status.json` every 5 minutes. It reloads the data layers when a new snapshot lands, and picks up new radar frames.
 - **Offline:** a service worker (`public/sw.js`, production builds only) keeps the app, the last data snapshot and recently viewed map tiles. If the network drops, the page still opens with its dated data and shows an "Offline" chip.
-- **Archive:** `.github/workflows/archive.yml` runs daily at 23:50 AEST. It uploads a gzipped snapshot to a monthly Release (`data-YYYY-MM`). Gauge files carry 72 h of history, so the daily snapshots form a continuous water-level record.
+- **Archive:** `.github/workflows/archive.yml` runs daily, scheduled for 23:50 AEST (best effort, so it can run hours late; the snapshot is named for the Brisbane date it actually ran). It uploads a gzipped snapshot to a monthly Release (`data-YYYY-MM`). Gauge files carry 72 h of history, so the daily snapshots form a continuous water-level record.
 - **Status:** `data/status.json` records the last success and any error for each source. The header shows how old the data is.
 
 ## Data sources
@@ -57,7 +58,7 @@ Run `npm run build:static-floods` to regenerate the simplified Feb 2022 overlay.
 
 1. Go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**.
 2. Optional: under **Settings → Secrets and variables → Actions**, add `QLDTRAFFIC_API_KEY` if you register your own key. Otherwise the shared public key from the QLDTraffic spec is used.
-3. Push to `main`. The *Update data & deploy* workflow then runs on every push and every ~10 minutes.
+3. Push to `main`. The *Update data & deploy* workflow then runs on every push, and on a best-effort schedule (requested every 10 minutes, often hours apart in practice).
 
 ## Roadmap
 
