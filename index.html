@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>BNE Flood Watch (unofficial)</title>
+    <meta name="description" content="Unofficial Greater Brisbane dashboard: rain radar, forecast, creek and river levels, historic flood extents and road conditions from open data." />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 3C11 11 7 16 7 21a9 9 0 0 0 18 0c0-5-4-10-9-18z' fill='%232563eb'/></svg>" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <h1>BNE Flood Watch</h1>
+        <span class="tag">Unofficial</span>
+      </div>
+      <div id="freshness" class="freshness" aria-live="polite"></div>
+    </header>
+
+    <div id="map" role="region" aria-label="Map"></div>
+
+    <aside id="panel" class="panel" aria-label="Layers and forecast">
+      <button id="panel-toggle" class="panel-toggle" aria-expanded="true" aria-controls="panel-body">
+        Layers &amp; forecast
+      </button>
+      <div id="panel-body" class="panel-body">
+        <section>
+          <h2>Live</h2>
+          <div id="live-layers"></div>
+          <div id="radar-controls" class="radar-controls" hidden>
+            <button id="radar-play" type="button" aria-label="Play radar loop">▶</button>
+            <input id="radar-slider" type="range" min="0" max="0" value="0" aria-label="Radar frame" />
+            <span id="radar-time" class="mono"></span>
+          </div>
+        </section>
+        <section>
+          <h2>Historic floods</h2>
+          <div id="history-layers"></div>
+        </section>
+        <section>
+          <h2>Forecast <span id="forecast-where" class="muted"></span></h2>
+          <div id="forecast" class="forecast">Loading…</div>
+          <p class="hint">Long-press or right-click the map to get the forecast for that spot.</p>
+        </section>
+        <section class="official">
+          <h2>Official warnings</h2>
+          <ul>
+            <li><a href="https://www.bom.gov.au/weather-and-climate/warnings-and-alerts" target="_blank" rel="noopener">BoM warnings</a></li>
+            <li><a href="https://www.brisbane.qld.gov.au/community-support-and-safety/natural-disasters-and-emergencies/emergency-dashboard" target="_blank" rel="noopener">Brisbane Emergency Dashboard</a></li>
+            <li><a href="https://disaster.logan.qld.gov.au/" target="_blank" rel="noopener">Logan Disaster Dashboard</a></li>
+            <li><a href="https://qldtraffic.qld.gov.au/" target="_blank" rel="noopener">QLDTraffic</a></li>
+          </ul>
+          <p class="disclaimer">
+            This site is <strong>not</strong> an official warning service. Data can be delayed or wrong.
+            In an emergency call <strong>000</strong>; for flood or storm help call the SES on <strong>132 500</strong>.
+            Never drive through flood water.
+          </p>
+        </section>
+        <section>
+          <details>
+            <summary>Data sources &amp; licences</summary>
+            <ul class="sources">
+              <li>Rain radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a></li>
+              <li>Forecast: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)</li>
+              <li>Creek gauges and Feb 2022 flood extent: Brisbane City Council open data (CC BY 4.0)</li>
+              <li>1893, 1974 and 2011 flood extents: © State of Queensland, Queensland Spatial (FloodCheck)</li>
+              <li>Road events: State of Queensland (Department of Transport and Main Roads) QLDTraffic API (CC BY 4.0 AU)</li>
+              <li>Base map: <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>, © OpenStreetMap contributors</li>
+            </ul>
+            <p><a href="https://github.com/williamwuofficial/bne-flood-watch" target="_blank" rel="noopener">Source code on GitHub</a></p>
+          </details>
+        </section>
+      </div>
+    </aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

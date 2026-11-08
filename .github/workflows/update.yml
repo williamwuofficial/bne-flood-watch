@@ -1,0 +1,81 @@
+# Fetch open data → store it on the `data` branch → build the site → deploy to GitHub Pages.
+#
+# Everything runs in one job on `main` because the github-pages environment only accepts deploys
+# from the default branch, and scheduled workflows always run on the default branch anyway.
+#
+# Free on public repos. Cron is best effort: runs are often 5–20 min late at busy times, so the
+# site always shows how old its data is.
+name: Update data & deploy
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # push the `data` branch
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update-and-deploy
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Restore the previous snapshot so fetchers can extend history (e.g. 72 h gauge series) and
+      # so a failing source keeps serving its last good data.
+      - name: Restore previous data
+        run: |
+          mkdir -p public/data
+          if git fetch --depth=1 origin data 2>/dev/null; then
+            git archive FETCH_HEAD | tar -x -C public/data
+          else
+            echo "No data branch yet (first run)."
+          fi
+
+      - name: Fetch sources
+        id: fetch
+        continue-on-error: true # still deploy last good data if every source fails
+        env:
+          QLDTRAFFIC_API_KEY: ${{ secrets.QLDTRAFFIC_API_KEY }} # optional; falls back to the published public key
+        run: npm run fetch
+
+      # One squashed, force-pushed commit: the repo never grows, and the push counts as repository
+      # activity, so GitHub won't disable this schedule after 60 quiet days.
+      - name: Publish data branch
+        working-directory: public/data
+        run: |
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Data snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
+          rm -rf .git
+
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+      - id: deploy
+        uses: actions/deploy-pages@v5

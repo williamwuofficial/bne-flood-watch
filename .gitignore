@@ -1,0 +1,5 @@
+node_modules/
+dist/
+# Fetched by GitHub Actions and published on the `data` branch; never committed to main.
+public/data/
+.cache/

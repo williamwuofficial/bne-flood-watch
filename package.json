@@ -1,0 +1,27 @@
+{
+  "name": "bne-flood-watch",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Unofficial Greater Brisbane storm, flood and traffic dashboard",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "fetch": "node fetchers/run-all.mjs",
+    "build:static-floods": "node scripts/build-static-floods.mjs"
+  },
+  "dependencies": {
+    "maplibre-gl": "^5.24.0"
+  },
+  "devDependencies": {
+    "mapshaper": "^0.7.101",
+    "typescript": "^5.9.0",
+    "vite": "^8.3.6"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
