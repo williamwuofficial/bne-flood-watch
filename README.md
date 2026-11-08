@@ -17,6 +17,9 @@ GitHub Actions (every ~10 min)                        Browser
 
 - **Fetched by Actions:** sources that are heavy, keyed, or need history. The workflow stores a small snapshot, keeps it on the orphan `data` branch (one force-pushed commit, so the repo doesn't grow), and deploys it with the site.
 - **Fetched by the browser:** sources that allow cross-origin requests and are cheap to call per visitor.
+- **Live refresh:** an open page re-checks `status.json` every 5 minutes. It reloads the data layers when a new snapshot lands, and picks up new radar frames.
+- **Offline:** a service worker (`public/sw.js`, production builds only) keeps the app, the last data snapshot and recently viewed map tiles. If the network drops, the page still opens with its dated data and shows an "Offline" chip.
+- **Archive:** `.github/workflows/archive.yml` runs daily at 23:50 AEST. It uploads a gzipped snapshot to a monthly Release (`data-YYYY-MM`). Gauge files carry 72 h of history, so the daily snapshots form a continuous water-level record.
 - **Status:** `data/status.json` records the last success and any error for each source. The header shows how old the data is.
 
 ## Data sources
@@ -25,6 +28,7 @@ GitHub Actions (every ~10 min)                        Browser
 |---|---|---|---|
 | Rain radar | [RainViewer](https://www.rainviewer.com/api.html) | Browser | Free with attribution |
 | Forecast | [Open-Meteo](https://open-meteo.com/) (blends models, including BoM ACCESS) | Browser | CC BY 4.0, non-commercial |
+| Rainfall totals (52 gauges, last 1 h / 3 h / 24 h) | [Brisbane City Council telemetry](https://data.brisbane.qld.gov.au/explore/dataset/telemetry-sensors-rainfall-and-stream-heights-observations/) | Actions | CC BY 4.0 |
 | Creek and river gauges (46 stream-height gauges, 72 h history) | [Brisbane City Council telemetry](https://data.brisbane.qld.gov.au/explore/dataset/telemetry-sensors-rainfall-and-stream-heights-observations/) | Actions | CC BY 4.0 |
 | Road closures, flooding, hazards, crashes | [QLDTraffic API](https://qldtraffic.qld.gov.au/more/Developers-and-Data) | Actions | CC BY 4.0 AU |
 | Feb 2022 flood extent | [BCC flood awareness: historic floods Feb 2022](https://data.brisbane.qld.gov.au/explore/dataset/flood-awareness-historic-brisbane-river-and-creek-floods-feb-2022/), simplified into `public/static/` | One-off script | CC BY 4.0 |
@@ -55,9 +59,10 @@ Run `npm run build:static-floods` to regenerate the simplified Feb 2022 overlay.
 
 ## Roadmap
 
-- [ ] BCC rainfall gauges (last 1 h and 24 h totals)
-- [ ] Offline-capable PWA showing the last snapshot
-- [ ] Daily archive (Release assets) and an "event replay" view
+- [x] BCC rainfall gauges (last 1 h / 3 h / 24 h totals)
+- [x] Offline-capable PWA showing the last snapshot
+- [x] Daily archive (Release assets)
+- [ ] "Event replay" view built from the archive
 
 ### Blocked on licensing: Bureau of Meteorology data
 

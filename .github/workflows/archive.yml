@@ -1,0 +1,38 @@
+# Daily archive of the data snapshot as a GitHub Release asset (free, permanent, outside the git
+# history). One release per month ("data-2026-11"), one gzipped tarball per day inside it.
+# Gauge files carry a rolling 72 h series, so daily snapshots keep a continuous water-level record.
+name: Archive data snapshot
+
+on:
+  schedule:
+    - cron: '50 13 * * *' # 23:50 AEST, before the day rolls over in Brisbane
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: data
+
+      - name: Package and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          day=$(TZ=Australia/Brisbane date +%F)
+          month=${day:0:7}
+          tag="data-$month"
+          asset="snapshot-$day.tar.gz"
+          tar --exclude=.git -czf "$asset" .
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target data --title "Data archive $month" \
+              --notes "Daily snapshots of public/data (BCC gauges and rainfall, QLDTraffic events). Each source keeps its original licence: see README." \
+              --latest=false
+          fi
+          gh release upload "$tag" "$asset" --clobber
+          echo "Uploaded $asset to $tag ($(du -h "$asset" | cut -f1))"

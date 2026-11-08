@@ -3,7 +3,17 @@ import './style.css';
 import { GeolocateControl, Map, NavigationControl, ScaleControl } from 'maplibre-gl';
 import { BASEMAP, BOUNDS, DATA_URL, HOME } from './config';
 import { renderForecast } from './forecast';
-import { LAYERS, radarState, setRadarFrame, type Layer } from './layers';
+import {
+  LAYERS,
+  invalidatePipelineData,
+  invalidateRadarFrames,
+  radarState,
+  rainState,
+  setRadarFrame,
+  setRainWindow,
+  type Layer,
+  type RainWindow,
+} from './layers';
 import { ago, fetchJson, fmtTime } from './util';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -56,11 +66,13 @@ function installLayers() {
     layer.add(map);
     setVisible(layer, isOn(layer));
   }
+  setRainWindow(map, rainState.window);
 }
 
 async function setVisible(layer: Layer, on: boolean) {
   for (const id of layer.layerIds) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
   if (layer.id === 'radar') $('radar-controls').hidden = !on;
+  if (layer.id === 'rainfall') $('rain-controls').hidden = !on;
   if (!on && layer.id === 'radar') stopRadar();
   if (on && layer.show) {
     try {
@@ -104,7 +116,41 @@ function buildPanel() {
       if (layersReady) setVisible(layer, box.checked);
     });
     $(layer.group === 'live' ? 'live-layers' : 'history-layers').append(row);
+    // Each layer's extra controls sit directly under its own row.
+    if (layer.id === 'radar') row.after($('radar-controls'));
+    if (layer.id === 'rainfall') row.after(buildRainControls());
   }
+}
+
+function buildRainControls() {
+  const wrap = document.createElement('div');
+  wrap.id = 'rain-controls';
+  wrap.className = 'segmented';
+  wrap.setAttribute('role', 'radiogroup');
+  wrap.setAttribute('aria-label', 'Rainfall period');
+  wrap.hidden = true;
+  const options: [RainWindow, string][] = [
+    ['rain1h', '1 h'],
+    ['rain3h', '3 h'],
+    ['rain24h', '24 h'],
+  ];
+  const saved = prefs['rainWindow:rain1h'] ? 'rain1h' : prefs['rainWindow:rain3h'] ? 'rain3h' : 'rain24h';
+  rainState.window = saved;
+  for (const [value, label] of options) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = label;
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-checked', String(value === saved));
+    btn.addEventListener('click', () => {
+      wrap.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b === btn)));
+      for (const [v] of options) prefs[`rainWindow:${v}`] = v === value;
+      savePrefs();
+      setRainWindow(map, value);
+    });
+    wrap.append(btn);
+  }
+  return wrap;
 }
 
 function markLayerError(layer: Layer, message: string | null) {
@@ -176,10 +222,28 @@ interface Status {
   generated: string;
   sources: Record<string, { ok: boolean; lastSuccess?: string; error?: string | null }>;
 }
+let lastGenerated: string | null = null;
+
+/** Re-run show() for visible layers so they pick up freshly fetched data. */
+function reshowVisible(filter: (l: Layer) => boolean) {
+  if (!layersReady) return;
+  for (const layer of LAYERS) if (isOn(layer) && layer.show && filter(layer)) setVisible(layer, true);
+}
+
 async function refreshFreshness() {
   const el = $('freshness');
+  // New radar frames arrive every 10 minutes; don't yank the frame out from under a playing loop.
+  if (!radarTimer) {
+    invalidateRadarFrames();
+    reshowVisible((l) => l.id === 'radar');
+  }
   try {
     const s = await fetchJson<Status>(DATA_URL('status.json'));
+    if (lastGenerated && s.generated !== lastGenerated) {
+      invalidatePipelineData();
+      reshowVisible((l) => l.id !== 'radar');
+    }
+    lastGenerated = s.generated;
     const failing = Object.entries(s.sources).filter(([, v]) => !v.ok).map(([k]) => k);
     const generated = new Date(s.generated);
     const stale = Date.now() - generated.getTime() > 45 * 60_000;
@@ -193,6 +257,23 @@ async function refreshFreshness() {
     el.className = 'freshness warn';
     el.textContent = 'Data status unavailable';
   }
+}
+
+// ─── Offline support ─────────────────────────────────────────────────────────────────────────
+function updateOnline() {
+  $('offline').hidden = navigator.onLine;
+}
+window.addEventListener('online', () => {
+  updateOnline();
+  refreshFreshness();
+});
+window.addEventListener('offline', updateOnline);
+updateOnline();
+// Service worker only in production builds: in dev it would cache Vite's modules and confuse HMR.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }).catch((err) => {
+    console.warn('Service worker registration failed', err);
+  });
 }
 
 buildPanel();

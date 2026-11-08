@@ -2,10 +2,12 @@
 // status.json and the previous snapshot (restored from the `data` branch) stays in place.
 import { readJson, writeJson } from './lib.mjs';
 import fetchBccGauges from './bcc-gauges.mjs';
+import fetchBccRainfall from './bcc-rainfall.mjs';
 import fetchTraffic from './traffic.mjs';
 
 const FETCHERS = {
   'bcc-gauges': fetchBccGauges,
+  'bcc-rainfall': fetchBccRainfall,
   traffic: fetchTraffic,
 };
 

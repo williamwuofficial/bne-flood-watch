@@ -7,6 +7,26 @@ const matchColour = (prop: string, table: Record<string, string>, fallback: stri
   ['match', ['get', prop], ...Object.entries(table).flat(), fallback] as unknown as ExpressionSpecification;
 import { ago, esc, fetchJson, fmtDateTime, sparkline } from './util';
 
+// ─── Data produced by the Actions pipeline (data/latest/*.json) ───────────────────────────────
+// globalThis.Map: the MapLibre `Map` import shadows the built-in one in this module.
+const pipelineCache = new globalThis.Map<string, FeatureCollection>();
+const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [] };
+
+async function pipelineData(path: string) {
+  if (!pipelineCache.has(path)) pipelineCache.set(path, await fetchJson<FeatureCollection>(DATA_URL(path)));
+  return pipelineCache.get(path)!;
+}
+
+/** Forget cached pipeline snapshots so the next show() fetches fresh copies. */
+export function invalidatePipelineData() {
+  pipelineCache.clear();
+}
+
+/** Forget the radar frame list so the next show() picks up new frames (RainViewer adds one every 10 min). */
+export function invalidateRadarFrames() {
+  radarState.frames = [];
+}
+
 export interface Layer {
   id: string;
   label: string;
@@ -198,8 +218,6 @@ const STATUS_LABEL = {
   unknown: 'No recent reading',
 };
 
-let gaugeData: FeatureCollection | null = null;
-
 const gauges: Layer = {
   id: 'gauges',
   label: 'Creek & river gauges (BCC)',
@@ -210,7 +228,7 @@ const gauges: Layer = {
   add(map) {
     map.addSource('gauges', {
       type: 'geojson',
-      data: gaugeData ?? { type: 'FeatureCollection', features: [] },
+      data: pipelineCache.get('latest/bcc-gauges.json') ?? EMPTY,
       attribution: 'Brisbane City Council (CC BY 4.0)',
     });
     map.addLayer({
@@ -231,8 +249,7 @@ const gauges: Layer = {
     bindPopup(map, 'gauges', (f) => gaugePopup(f.properties as unknown as GaugeProps, f));
   },
   async show(map) {
-    if (!gaugeData) gaugeData = await fetchJson(DATA_URL('latest/bcc-gauges.json'));
-    map.getSource<GeoJSONSource>('gauges')?.setData(gaugeData!);
+    map.getSource<GeoJSONSource>('gauges')?.setData(await pipelineData('latest/bcc-gauges.json'));
   },
 };
 
@@ -256,6 +273,98 @@ function gaugePopup(p: GaugeProps, f: MapGeoJSONFeature) {
     <p class="muted">Gauge ${esc(p.id)} · last 72 h</p>`;
 }
 
+// ─── Rainfall gauges (BCC, via GitHub Actions) ───────────────────────────────────────────────
+
+export type RainWindow = 'rain1h' | 'rain3h' | 'rain24h';
+export const rainState = { window: 'rain24h' as RainWindow };
+
+/** mm thresholds → colour, loosely following common rainfall map ramps. */
+const RAIN_RAMP: [number, string][] = [
+  [0.2, '#bae6fd'],
+  [5, '#38bdf8'],
+  [15, '#2563eb'],
+  [30, '#7c3aed'],
+  [60, '#c026d3'],
+  [100, '#e11d48'],
+];
+
+function rainColour(win: RainWindow): ExpressionSpecification {
+  return ['step', ['get', win], 'rgba(0,0,0,0)', ...RAIN_RAMP.flat()] as unknown as ExpressionSpecification;
+}
+
+export function setRainWindow(map: Map, win: RainWindow) {
+  rainState.window = win;
+  if (!map.getLayer('rain-dot')) return;
+  map.setPaintProperty('rain-dot', 'circle-color', rainColour(win));
+  map.setLayoutProperty('rain-label', 'text-field', rainLabel(win));
+  map.setFilter('rain-label', ['>=', ['get', win], 0.2]);
+}
+
+function rainLabel(win: RainWindow): ExpressionSpecification {
+  return ['number-format', ['get', win], { 'max-fraction-digits': 1 }] as unknown as ExpressionSpecification;
+}
+
+const rainfall: Layer = {
+  id: 'rainfall',
+  label: 'Rainfall totals (BCC)',
+  group: 'live',
+  swatch: '#38bdf8',
+  defaultOn: false,
+  layerIds: ['rain-dot', 'rain-label'],
+  add(map) {
+    map.addSource('rainfall', {
+      type: 'geojson',
+      data: pipelineCache.get('latest/bcc-rainfall.json') ?? EMPTY,
+      attribution: 'Brisbane City Council (CC BY 4.0)',
+    });
+    const win = rainState.window;
+    map.addLayer({
+      id: 'rain-dot',
+      type: 'circle',
+      source: 'rainfall',
+      layout: { visibility: 'none' },
+      paint: {
+        // Hollow ring when dry, filled by intensity when wet, grey dashed-look when not reporting.
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 5, 14, 10],
+        'circle-color': rainColour(win),
+        'circle-stroke-color': ['case', ['get', 'reporting'], '#38bdf8', '#94a3b8'],
+        'circle-stroke-width': 2,
+      },
+    });
+    map.addLayer({
+      id: 'rain-label',
+      type: 'symbol',
+      source: 'rainfall',
+      filter: ['>=', ['get', win], 0.2],
+      layout: {
+        visibility: 'none',
+        'text-field': rainLabel(win),
+        'text-font': ['Noto Sans Regular'],
+        'text-size': 12,
+        'text-offset': [0, -1.4],
+        'text-allow-overlap': true,
+      },
+      paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
+    });
+    bindPopup(map, 'rain-dot', (f) => {
+      const p = f.properties as Record<string, number | string | boolean | null>;
+      const asOf = p.lastReport ? new Date(Number(p.lastReport) * 1000) : null;
+      return `
+        <h3>${esc(p.name)}</h3>
+        <p class="muted">Rain gauge ${esc(p.id)}</p>
+        <dl class="rain-grid">
+          <div><dt>Last 1 h</dt><dd>${p.rain1h} mm</dd></div>
+          <div><dt>Last 3 h</dt><dd>${p.rain3h} mm</dd></div>
+          <div><dt>Last 24 h</dt><dd>${p.rain24h} mm</dd></div>
+        </dl>
+        <p class="muted">${asOf ? `Last report ${fmtDateTime(asOf)} (${ago(asOf)})` : 'No reports in the last 24 h'}</p>`;
+    });
+  },
+  async show(map) {
+    map.getSource<GeoJSONSource>('rainfall')?.setData(await pipelineData('latest/bcc-rainfall.json'));
+  },
+};
+
 // ─── Road events (QLDTraffic, via GitHub Actions) ────────────────────────────────────────────
 
 const TRAFFIC_COLOURS = {
@@ -265,8 +374,6 @@ const TRAFFIC_COLOURS = {
   Roadworks: '#78716c',
   'Special event': '#7c3aed',
 };
-
-let trafficData: FeatureCollection | null = null;
 
 const traffic: Layer = {
   id: 'traffic',
@@ -278,7 +385,7 @@ const traffic: Layer = {
   add(map) {
     map.addSource('traffic', {
       type: 'geojson',
-      data: trafficData ?? { type: 'FeatureCollection', features: [] },
+      data: pipelineCache.get('latest/traffic.json') ?? EMPTY,
       attribution: 'State of Queensland (TMR) QLDTraffic (CC BY 4.0 AU)',
     });
     const colour = matchColour('type', TRAFFIC_COLOURS, '#64748b');
@@ -324,8 +431,7 @@ const traffic: Layer = {
     bindPopup(map, 'traffic-point', popup);
   },
   async show(map) {
-    if (!trafficData) trafficData = await fetchJson(DATA_URL('latest/traffic.json'));
-    map.getSource<GeoJSONSource>('traffic')?.setData(trafficData!);
+    map.getSource<GeoJSONSource>('traffic')?.setData(await pipelineData('latest/traffic.json'));
   },
 };
 
@@ -342,6 +448,7 @@ function bindPopup(map: Map, layerId: string, html: (f: MapGeoJSONFeature) => st
 export const LAYERS: Layer[] = [
   radar,
   gauges,
+  rainfall,
   traffic,
   flood2022,
   historicRaster('flood-2011', 'Jan 2011 (state interim flood lines)', '2010To2011InterimFloodLines', '#2563eb', 0),
